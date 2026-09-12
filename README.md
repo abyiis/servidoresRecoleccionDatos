@@ -1,143 +1,128 @@
-# Guía de Comandos: Servidor AWS (SQLite), Servidor On-Premise (PostgreSQL) y LilyGO (ESP32)
+# Sistema de Recolección de Datos IoT con LilyGo (ESP32)
 
-Este documento contiene los comandos y pasos de ejecución rápida para desplegar las dos opciones de servidor y probar los endpoints HTTP.
+Este repositorio contiene una suite completa de backends construidos en **Python (Flask)** diseñados para recibir telemetría enviada desde placas **LilyGo (ESP32)** a través de peticiones `HTTP POST` en el puerto **5000**. 
 
----
-
-## ☁️ Opción 1: Servidor AWS EC2 (SQLite)
-
-### 1. Conexión e Instalación de Dependencias
-~bash
-# Conectarse a la instancia EC2 por SSH
-ssh -i /ruta/a/tu-clave.pem ubuntu@TU_IP_PUBLICA_AWS
-
-# Actualizar repositorios e instalar pip
-sudo apt update && sudo apt install -y python3-pip
-
-# Instalar Flask
-pip3 install flask
-~
-
-### 2. Ejecutar el Servidor
-~bash
-# Opción A: Ejecución en primer plano (para desarrollo/pruebas)
-python3 app.py
-
-# Opción B: Ejecución en segundo plano (persistente tras cerrar la sesión SSH)
-nohup python3 app.py > server.log 2>&1 &
-~
-
-### 3. Monitoreo y Gestión del Proceso
-~bash
-# Ver si el proceso app.py está activo
-ps aux | grep app.py
-
-# Ver logs de la aplicación en tiempo real
-tail -f server.log
-
-# Detener el servidor en segundo plano
-kill $(pgrep -f app.py)
-~
-
-### 4. Pruebas de Endpoints (cURL)
-~bash
-# CREATE: Insertar una lectura (POST)
-curl -X POST http://localhost:5000/datos \
-     -H "Content-Type: application/json" \
-     -d '{"dispositivo": "LilyGO_AWS", "valor": 25.4}'
-
-# READ: Consultar todas las lecturas (GET)
-curl http://localhost:5000/datos
-
-# UPDATE: Actualizar una lectura por ID (PUT)
-curl -X PUT http://localhost:5000/datos/1 \
-     -H "Content-Type: application/json" \
-     -d '{"dispositivo": "LilyGO_AWS", "valor": 28.1}'
-
-# DELETE: Eliminar una lectura por ID (DELETE)
-curl -X DELETE http://localhost:5000/datos/1
-~
+El proyecto incluye **4 arquitecturas de almacenamiento diferentes** (locales y en la nube de AWS), junto con el firmware en C++ (`main.cpp`) listo para subir a la microcontroladora.
 
 ---
 
-## 🏢 Opción 2: Servidor On-Premise (PostgreSQL)
+## Arquitecturas Disponibles
 
-### 1. Instalación del Motor PostgreSQL y Driver Python
-~bash
-# Actualizar e instalar servicio PostgreSQL
-sudo apt update
-sudo apt install -y postgresql postgresql-contrib
-
-# Instalar Flask y conector nativo de PostgreSQL
-pip3 install flask psycopg2-binary
-~
-
-### 2. Configurar Base de Datos y Usuario
-~bash
-# Entrar a la CLI de PostgreSQL
-sudo -u postgres psql
-~
-
-*Ejecutar dentro de la consola de PostgreSQL (`psql`):*
-~sql
-CREATE DATABASE lilygo_local;
-CREATE USER usuario_local WITH PASSWORD 'password123';
-GRANT ALL PRIVILEGES ON DATABASE lilygo_local TO usuario_local;
-\q
-~
-
-### 3. Iniciar el Servicio de PostgreSQL
-~bash
-# Verificar estado del servicio
-sudo systemctl status postgresql
-
-# Iniciar o reiniciar el servicio
-sudo systemctl start postgresql
-sudo systemctl restart postgresql
-~
-
-### 4. Ejecutar el Servidor On-Premise
-~bash
-# Ejecutar servidor local
-python3 app_local.py
-
-# Ejecutar en segundo plano
-nohup python3 app_local.py > server_local.log 2>&1 &
-~
-
-### 5. Pruebas de Endpoints On-Premise (cURL)
-~bash
-# CREATE: Insertar una lectura (POST)
-curl -X POST http://localhost:5000/datos \
-     -H "Content-Type: application/json" \
-     -d '{"dispositivo": "LilyGO_Local", "valor": 19.8}'
-
-# READ: Consultar todas las lecturas (GET)
-curl http://localhost:5000/datos
-
-# UPDATE: Actualizar una lectura por ID (PUT)
-curl -X PUT http://localhost:5000/datos/1 \
-     -H "Content-Type: application/json" \
-     -d '{"dispositivo": "LilyGO_Local", "valor": 21.0}'
-
-# DELETE: Eliminar una lectura por ID (DELETE)
-curl -X DELETE http://localhost:5000/datos/1
-~
+| Arquitectura | Tipo | Ruta Backend | Caso de Uso Recomendado |
+| :--- | :--- | :--- | :--- |
+| **1. SQLite** | Relacional Local | `serverSqlite/app.py` | Pruebas rápidas, prototipado e entornos locales sin instalación de SGBD. |
+| **2. PostgreSQL Local** | Relacional Local | `PostgreSQL/app_local.py` | Desarrollo local estructurado antes del despliegue en la nube. |
+| **3. AWS RDS** | Relacional Cloud | `serverRDS/app.py` | Producción en la nube con base de datos administrada y acceso SSH. |
+| **4. AWS S3** | Data Lake / Objetos | `serverS3/app.py` | Almacenamiento masivo de lecturas JSON o imágenes (LilyGo CAM) a bajo costo. |
 
 ---
 
-## 📡 Pruebas Remotas desde la LilyGO (o Cliente Externo)
+## Requisitos Previos
 
-Para probar los servidores desde tu máquina local apuntando a la IP pública o privada:
+### En el Servidor (Local o EC2):
+* Python 3.8 o superior.
+* Gestor de paquetes `pip`.
+* Puerto `5000` abierto en el Firewall (o Security Group en AWS EC2).
 
-~bash
-# Probar Servidor AWS desde equipo remoto
-curl -X POST http://<TU_IP_PUBLICA_AWS>:5000/datos \
-     -H "Content-Type: application/json" \
-     -d '{"dispositivo": "LilyGO_Remote", "valor": 30.2}'
+### En la placa LilyGo (ESP32):
+* Visual Studio Code con extensión **PlatformIO** O **Arduino IDE**.
+* Cable de datos USB a Type-C.
 
-# Probar Servidor On-Premise desde red LAN
-curl -X POST http://<TU_IP_LOCAL_LAN>:5000/datos \
-     -H "Content-Type: application/json" \
-     -d '{"dispositivo": "LilyGO_LAN", "valor": 22.4}'
-~
+---
+
+## Paso a Paso para la Instalación y Despliegue
+
+### Paso 1: Clonar el Repositorio e Instalar Dependencias
+
+Conéctate por SSH a tu servidor EC2 o abre una terminal local:
+
+```bash
+git clone https://github.com/tu-usuario/servidoresRecoleccionDatos.git
+cd servidoresRecoleccionDatos-main
+pip install flask flask_sqlalchemy psycopg2-binary boto3
+```
+
+---
+
+### Paso 2: Iniciar el Servidor Elegido
+
+Selecciona uno de los 4 servidores para ponerlo en escucha en el puerto 5000:
+
+#### Opción A: Base de datos SQLite (Local)
+```bash
+python3 serverSqlite/app.py
+```
+
+#### Opción B: Base de datos PostgreSQL (Local)
+*(Requiere PostgreSQL corriendo en localhost y base de datos creada)*
+```bash
+python3 PostgreSQL/app_local.py
+```
+
+#### Opción C: Base de datos AWS RDS
+*(Asegúrate de haber configurado tu URI de conexión a RDS en `serverRDS/app.py`)*
+```bash
+python3 serverRDS/app.py
+```
+
+#### Opción D: Amazon S3 (Data Lake)
+*(Asegúrate de que la instancia EC2 tenga un Rol IAM asignado con acceso a S3)*
+```bash
+python3 serverS3/app.py
+```
+
+> **Nota:** Para mantener el servidor ejecutándose en segundo plano en Linux (EC2) aunque cierres la terminal SSH, utiliza:
+> ```bash
+> nohup python3 serverRDS/app.py > app.log 2>&1 &
+> ```
+
+---
+
+### Paso 3: Configurar y Cargar el Firmware LilyGo (`main.cpp`)
+
+1. Abre el archivo `main.cpp` en PlatformIO o Arduino IDE.
+2. Modifica los parámetros de red y la dirección IP de tu servidor:
+
+```cpp
+// Configuración de red WiFi
+const char* WIFI_SSID = "NOMBRE_DE_TU_RED";
+const char* WIFI_PASSWORD = "CONTRASEÑA_DE_TU_RED";
+
+// IP de tu servidor (IP Local o IP Pública de la EC2)
+const char* SERVER_IP = "54.123.45.67";
+```
+
+3. Selecciona la opción de backend activa cambiando la constante `TIPO_SERVIDOR`:
+
+```cpp
+#define OPCION_POSTGRESQL 1
+#define OPCION_RDS        2
+#define OPCION_S3         3
+#define OPCION_SQLITE     4
+
+// Selecciona tu servidor activo aquí:
+#define TIPO_SERVIDOR OPCION_RDS
+```
+
+4. Compila y carga el programa en tu placa LilyGo ESP32.
+5. Abre el **Monitor Serie** a `115200 baudios` para verificar que la transmisión sea exitosa (deberás recibir un código `HTTP 201`).
+
+---
+
+## Verificación y Pruebas Manuales (cURL)
+
+Puedes simular el envío de datos desde la terminal de tu computadora sin la placa LilyGo ejecutando:
+
+```bash
+curl -X POST http://TU_IP_SERVIDOR:5000/sensor \
+  -H "Content-Type: application/json" \
+  -d '{"dispositivo": "LilyGo_Test", "valor": 25.4, "humedad": 60.2}'
+```
+
+---
+
+## 🔒 Consideraciones de Seguridad en AWS
+
+1. **Security Group (EC2):** Habilita reglas de entrada (*Inbound Rules*) para el puerto **22 (SSH)** y el puerto **5000 (Custom TCP)**.
+2. **Security Group (RDS):** Permite conexiones al puerto 5432/3306 **únicamente** desde el Security Group asignado a tu EC2.
+3. **Credenciales S3:** No guardes `AWS_ACCESS_KEY` ni `AWS_SECRET_KEY` dentro del código. Asigna un **Rol IAM** a la instancia EC2 con la política `AmazonS3FullAccess`.
