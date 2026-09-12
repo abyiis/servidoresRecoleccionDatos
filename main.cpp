@@ -1,74 +1,95 @@
+#include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 
-// --- Credenciales de tu Red WiFi ---
-const char* ssid = "TU_RED_WIFI";
-const char* password = "TU_CONTRASEÑA_WIFI";
+// Configuración WiFi
+const char* WIFI_SSID = "TU_RED_WIFI";
+const char* WIFI_PASSWORD = "TU_PASSWORD_WIFI";
 
-// =========================================================================
-// CONFIGURACIÓN DEL SERVIDOR
-// =========================================================================
+// Dirección IP de tu servidor (EC2 o Servidor Local)
+const char* SERVER_IP = "192.168.1.100"; // Cambiar por tu IP Pública de EC2 o IP local
 
-// Opción 1: Servidor AWS (SQLite) -> ACTIVA POR DEFECTO
-const char* serverUrl = "http://TU_IP_PUBLICA_AWS:5000/datos";
+// Selecciona el servidor destino descomentando SOLO UNO:
+#define OPCION_POSTGRESQL 1
+#define OPCION_RDS        2
+#define OPCION_S3         3
+#define OPCION_SQLITE     4
 
-// Opción 2: Servidor On-Premise Local (PostgreSQL) -> DESCOMENTA PARA USAR
-// const char* serverUrl = "http://192.168.1.100:5000/datos"; // Reemplaza por la IP local de tu PC/servidor
+#define TIPO_SERVIDOR OPCION_POSTGRESQL
 
-// =========================================================================
+// Configuración del endpoint según la opción elegida
+String obtenerUrlServidor() {
+  String baseUrl = "http://" + String(SERVER_IP) + ":5000";
+  
+  #if TIPO_SERVIDOR == OPCION_POSTGRESQL
+    return baseUrl + "/sensor";          // Servidor PostgreSQL Local
+  #elif TIPO_SERVIDOR == OPCION_RDS
+    return baseUrl + "/sensor";          // Servidor AWS RDS
+  #elif TIPO_SERVIDOR == OPCION_S3
+    return baseUrl + "/sensor";          // Servidor AWS S3
+  #elif TIPO_SERVIDOR == OPCION_SQLITE
+    return baseUrl + "/sensor";          // Servidor SQLite Local
+  #endif
+}
 
-void setup() {
-  Serial.begin(115200);
-  delay(1000);
-
-  // Conexión a la red WiFi
-  WiFi.begin(ssid, password);
-  Serial.print("Conectando a WiFi");
+void conectarWiFi() {
+  Serial.print("Conectando a ");
+  Serial.println(WIFI_SSID);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-  
-  Serial.println("\n¡Conexión WiFi exitosa!");
-  Serial.print("Dirección IP de la LilyGO: ");
+  Serial.println("\nWiFi Conectado!");
+  Serial.print("IP asignada: ");
   Serial.println(WiFi.localIP());
-  Serial.print("Enviando datos a: ");
-  Serial.println(serverUrl);
 }
 
-void loop() {
-  // Verificar si la conexión WiFi está activa
+void enviarDatosSensor() {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
-
-    // Inicializar la conexión HTTP hacia la URL elegida
+    String serverUrl = obtenerUrlServidor();
+    
     http.begin(serverUrl);
     http.addHeader("Content-Type", "application/json");
 
-    // Simular un valor de lectura para prueba
-    float valorSensor = random(200, 350) / 10.0;
+    // Simulación de lectura del sensor LilyGo
+    float temperatura = random(200, 350) / 10.0;
+    float humedad = random(400, 800) / 10.0;
+    
+    // Construcción del JSON
+    String jsonPayload = "{";
+    jsonPayload += "\"dispositivo\":\"LilyGo_ESP32\",";
+    jsonPayload += "\"valor\":" + String(temperatura) + ",";
+    jsonPayload += "\"humedad\":" + String(humedad);
+    jsonPayload += "}";
 
-    // JSON idéntico compatible con ambas soluciones Flask (SQLite y PostgreSQL)
-    String jsonPayload = "{\"dispositivo\":\"LilyGO_ESP32\",\"valor\":" + String(valorSensor, 1) + "}";
+    Serial.println("Enviando petición a: " + serverUrl);
+    Serial.println("Payload: " + jsonPayload);
 
-    Serial.print("Enviando payload: ");
-    Serial.println(jsonPayload);
+    int httpCode = http.POST(jsonPayload);
 
-    // Enviar la petición HTTP POST
-    int httpResponseCode = http.POST(jsonPayload);
-
-    if (httpResponseCode > 0) {
+    if (httpCode > 0) {
       String response = http.getString();
-      Serial.printf("Respuesta del Servidor [%d]: %s\n", httpResponseCode, response.c_str());
+      Serial.printf("Respuesta HTTP: %d\n", httpCode);
+      Serial.println("Respuesta servidor: " + response);
     } else {
-      Serial.printf("Error en el envío POST. Código de error: %d\n", httpResponseCode);
+      Serial.printf("Error enviando POST: %s\n", http.errorToString(httpCode).c_str());
     }
 
-    http.end(); // Liberar memoria de la sesión HTTP
+    http.end();
   } else {
     Serial.println("Error: Conexión WiFi perdida");
   }
+}
 
-  // Pausa de 10 segundos entre lecturas
-  delay(10000);
+void setup() {
+  Serial.begin(115200);
+  conectarWiFi();
+}
+
+void loop() {
+  enviarDatosSensor();
+  delay(10000); // Envío cada 10 segundos
 }
